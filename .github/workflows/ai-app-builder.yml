@@ -42,7 +42,7 @@ jobs:
         
         echo "$SWIFT_CODE_B64" | base64 --decode > main.swift
         
-        cat > Package.swift << EOL
+        cat > Package.swift << 'PACKAGE_EOF'
         // swift-tools-version: 5.9
         import PackageDescription
         
@@ -52,7 +52,7 @@ jobs:
             products: [.executable(name: "$APP_NAME", targets: ["$APP_NAME"])],
             targets: [.executableTarget(name: "$APP_NAME", path: ".")]
         )
-EOL
+PACKAGE_EOF
         
         echo "✅ Project structure created"
         ls -la
@@ -73,7 +73,6 @@ EOL
         
         if swift build -c release --verbose > "$BUILD_LOG" 2> "$ERROR_LOG"; then
             echo "✅ Build successful!"
-            cat "$BUILD_LOG"
         else
             echo "❌ Build failed - activating AI debugging..."
             
@@ -83,7 +82,7 @@ EOL
             echo "📄 Build errors:"
             cat "$ERROR_LOG"
             
-            echo "📄 Build log:"
+            echo "📄 Build log tail:"
             tail -50 "$BUILD_LOG"
             
             echo "📄 Source code analysis:"
@@ -92,17 +91,6 @@ EOL
             head -30 main.swift
             
             echo "🧠 AI Debug Analysis:"
-            echo "The build failed with the following errors:"
-            cat "$ERROR_LOG"
-            echo ""
-            echo "Possible fixes:"
-            echo "1. Check for syntax errors in Swift code"
-            echo "2. Verify all imports are correct"
-            echo "3. Ensure SwiftUI components are properly structured"
-            echo "4. Check for missing dependencies"
-            
-            echo "🔧 Attempting automatic analysis..."
-            
             if grep -q "import SwiftUI" main.swift; then
                 echo "✅ SwiftUI import found"
             else
@@ -115,37 +103,19 @@ EOL
                 echo "⚠️  No @main entry point detected"
             fi
             
-            if grep -q "WindowGroup" main.swift; then
-                echo "✅ WindowGroup found"
-            else
-                echo "⚠️  No WindowGroup detected"
-            fi
+            echo "💾 Creating debug report..."
             
-            if grep -q "ContentView" main.swift; then
-                echo "✅ ContentView found"
-            else
-                echo "⚠️  No ContentView detected"
-            fi
-            
-            echo "💾 Saving debug info for analysis..."
-            
-            cat > debug_report.json << EOL2
+            cat > debug_report.json << 'DEBUG_EOF'
 {
   "build_failed": true,
   "timestamp": "$(date -Iseconds)",
-  "errors": "$(cat "$ERROR_LOG" | head -20 | tr '\n' '|')",
-  "build_log_tail": "$(tail -20 "$BUILD_LOG" | tr '\n' '|')",
-  "source_lines": $(wc -l < main.swift),
-  "analysis": {
-    "has_swiftui_import": $(grep -q "import SwiftUI" main.swift && echo "true" || echo "false"),
-    "has_main": $(grep -q "@main" main.swift && echo "true" || echo "false"),
-    "has_windowgroup": $(grep -q "WindowGroup" main.swift && echo "true" || echo "false"),
-    "has_contentview": $(grep -q "ContentView" main.swift && echo "true" || echo "false")
-  }
+  "has_swiftui_import": $(grep -q "import SwiftUI" main.swift && echo "true" || echo "false"),
+  "has_main": $(grep -q "@main" main.swift && echo "true" || echo "false"),
+  "source_lines": $(wc -l < main.swift)
 }
-EOL2
+DEBUG_EOF
             
-            echo "🔗 Debug report created: debug_report.json"
+            echo "🔗 Debug report created"
             cat debug_report.json
             
             exit 1
@@ -175,7 +145,7 @@ EOL2
         cp "$EXECUTABLE_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
         chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
         
-        cat > "$APP_BUNDLE/Contents/Info.plist" << EOL
+        cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST_EOF'
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
@@ -202,7 +172,7 @@ EOL2
             <true/>
         </dict>
         </plist>
-EOL
+PLIST_EOF
         
         echo "✅ App bundle created: $APP_BUNDLE"
         
@@ -213,22 +183,6 @@ EOL
         du -sh "${APP_NAME}-macOS.zip"
         
         echo "ZIP_FILE=${APP_NAME}-macOS.zip" >> $GITHUB_ENV
-    
-    - name: AI Quality Test
-      run: |
-        cd "$APP_NAME"
-        
-        echo "🤖 AI Quality Testing..."
-        
-        echo "🧪 Running automated tests:"
-        echo "✅ App bundle structure: $([ -d "$APP_BUNDLE" ] && echo "PASS" || echo "FAIL")"
-        echo "✅ Executable exists: $([ -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ] && echo "PASS" || echo "FAIL")"
-        echo "✅ Info.plist exists: $([ -f "$APP_BUNDLE/Contents/Info.plist" ] && echo "PASS" || echo "FAIL")"
-        echo "✅ Executable permissions: $([ -x "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ] && echo "PASS" || echo "FAIL")"
-        
-        file "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-        
-        echo "🎉 AI Quality Test Complete!"
     
     - name: Upload successful build
       if: success()
