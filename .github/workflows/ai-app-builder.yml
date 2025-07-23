@@ -39,19 +39,15 @@ jobs:
         
         echo "$SWIFT_CODE_B64" | base64 --decode > main.swift
         
-        cat > Package.swift << 'PKGEOF'
-// swift-tools-version: 5.9
-import PackageDescription
-
-let package = Package(
-    name: "$APP_NAME",
-    platforms: [.macOS(.v14)],
-    products: [.executable(name: "$APP_NAME", targets: ["$APP_NAME"])],
-    targets: [.executableTarget(name: "$APP_NAME", path: ".")]
-)
-PKGEOF
-        
-        sed -i '' "s/\$APP_NAME/$APP_NAME/g" Package.swift
+        echo "// swift-tools-version: 5.9" > Package.swift
+        echo "import PackageDescription" >> Package.swift
+        echo "" >> Package.swift
+        echo "let package = Package(" >> Package.swift
+        echo "    name: \"$APP_NAME\"," >> Package.swift
+        echo "    platforms: [.macOS(.v14)]," >> Package.swift
+        echo "    products: [.executable(name: \"$APP_NAME\", targets: [\"$APP_NAME\"])]," >> Package.swift
+        echo "    targets: [.executableTarget(name: \"$APP_NAME\", path: \".\")]" >> Package.swift
+        echo ")" >> Package.swift
         
         echo "✅ Project created"
         echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
@@ -68,6 +64,8 @@ PKGEOF
             echo "❌ Build failed"
             echo "📄 Source code:"
             head -30 main.swift
+            echo "📄 Package.swift:"
+            cat Package.swift
             exit 1
         fi
         
@@ -87,26 +85,22 @@ PKGEOF
         cp "$EXECUTABLE_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
         chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
         
-        cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLISTEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>$APP_NAME</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.ai.$APP_NAME</string>
-    <key>CFBundleName</key>
-    <string>$APP_NAME</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleVersion</key>
-    <string>1.0</string>
-</dict>
-</plist>
-PLISTEOF
-        
-        sed -i '' "s/\$APP_NAME/$APP_NAME/g" "$APP_BUNDLE/Contents/Info.plist"
+        echo '<?xml version="1.0" encoding="UTF-8"?>' > "$APP_BUNDLE/Contents/Info.plist"
+        echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '<plist version="1.0">' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '<dict>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <key>CFBundleExecutable</key>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo "    <string>$APP_NAME</string>" >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <key>CFBundleIdentifier</key>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo "    <string>com.ai.$APP_NAME</string>" >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <key>CFBundleName</key>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo "    <string>$APP_NAME</string>" >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <key>CFBundlePackageType</key>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <string>APPL</string>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <key>CFBundleVersion</key>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '    <string>1.0</string>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '</dict>' >> "$APP_BUNDLE/Contents/Info.plist"
+        echo '</plist>' >> "$APP_BUNDLE/Contents/Info.plist"
         
         zip -r "${APP_NAME}-macOS.zip" "$APP_BUNDLE"
         
