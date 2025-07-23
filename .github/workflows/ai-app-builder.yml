@@ -1,0 +1,150 @@
+name: AI App Builder
+
+on:
+  repository_dispatch:
+    types: [build-app]
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'App Name'
+        required: true
+        default: 'MyApp'
+      swift_code:
+        description: 'Swift Code (base64 encoded)'
+        required: true
+
+jobs:
+  build-macos-app:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup build environment
+      run: |
+        echo "🚀 Starting AI App Build"
+        echo "💻 macOS Runner: $(sw_vers -productVersion)"
+        echo "🧠 Available RAM: $(sysctl -n hw.memsize | awk '{print $1/1024/1024/1024 " GB"}')"
+        echo "⚡ CPU Cores: $(sysctl -n hw.ncpu)"
+        xcode-select --version
+        swift --version
+    
+    - name: Decode and prepare Swift code
+      run: |
+        APP_NAME="${{ github.event.inputs.app_name || github.event.client_payload.app_name }}"
+        SWIFT_CODE_B64="${{ github.event.inputs.swift_code || github.event.client_payload.swift_code }}"
+        
+        echo "📝 App Name: $APP_NAME"
+        
+        mkdir -p "$APP_NAME"
+        cd "$APP_NAME"
+        
+        echo "$SWIFT_CODE_B64" | base64 --decode > main.swift
+        
+        cat > Package.swift << EOL
+        // swift-tools-version: 5.9
+        import PackageDescription
+        
+        let package = Package(
+            name: "$APP_NAME",
+            platforms: [.macOS(.v14)],
+            products: [.executable(name: "$APP_NAME", targets: ["$APP_NAME"])],
+            targets: [.executableTarget(name: "$APP_NAME", path: ".")]
+        )
+EOL
+        
+        echo "✅ Project structure created"
+        ls -la
+        echo "📄 Swift code preview:"
+        head -20 main.swift
+        
+        echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+    
+    - name: Build Swift application
+      run: |
+        cd "$APP_NAME"
+        
+        echo "🔨 Building Swift application..."
+        echo "⏱️  Build started: $(date)"
+        
+        swift build -c release --verbose
+        
+        echo "⏱️  Build completed: $(date)"
+        echo "✅ Swift build successful"
+        
+        EXECUTABLE_PATH=$(find .build/release -name "$APP_NAME" -type f | head -1)
+        echo "🎯 Executable found: $EXECUTABLE_PATH"
+        
+        if [ ! -f "$EXECUTABLE_PATH" ]; then
+          echo "❌ Executable not found!"
+          find .build -name "$APP_NAME" -type f
+          exit 1
+        fi
+        
+        echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
+    
+    - name: Create macOS app bundle
+      run: |
+        cd "$APP_NAME"
+        
+        echo "📦 Creating .app bundle..."
+        
+        APP_BUNDLE="${APP_NAME}.app"
+        mkdir -p "$APP_BUNDLE/Contents/MacOS"
+        mkdir -p "$APP_BUNDLE/Contents/Resources"
+        
+        cp "$EXECUTABLE_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+        chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+        
+        cat > "$APP_BUNDLE/Contents/Info.plist" << EOL
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>$APP_NAME</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.ai.${APP_NAME,,}</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>$APP_NAME</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+        </dict>
+        </plist>
+EOL
+        
+        echo "✅ App bundle created: $APP_BUNDLE"
+        
+        zip -r "${APP_NAME}-macOS.zip" "$APP_BUNDLE"
+        
+        echo "📦 App bundle size:"
+        du -sh "$APP_BUNDLE"
+        du -sh "${APP_NAME}-macOS.zip"
+        
+        echo "ZIP_FILE=${APP_NAME}-macOS.zip" >> $GITHUB_ENV
+    
+    - name: Upload app bundle artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APP_NAME }}-macOS-App
+        path: ${{ env.APP_NAME }}/${{ env.ZIP_FILE }}
+        retention-days: 30
+    
+    - name: Generate download info
+      run: |
+        echo "🎉 BUILD COMPLETED SUCCESSFULLY!"
+        echo "📱 App: $APP_NAME"
+        echo "🔗 Download: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
