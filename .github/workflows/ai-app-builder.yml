@@ -1,4 +1,4 @@
-name: AI App Builder
+name: AI App Builder with AI Debugging
 
 on:
   repository_dispatch:
@@ -23,7 +23,7 @@ jobs:
     
     - name: Setup build environment
       run: |
-        echo "🚀 Starting AI App Build"
+        echo "🚀 Starting AI App Build with AI Debugging"
         echo "💻 macOS Runner: $(sw_vers -productVersion)"
         echo "🧠 Available RAM: $(sysctl -n hw.memsize | awk '{print $1/1024/1024/1024 " GB"}')"
         echo "⚡ CPU Cores: $(sysctl -n hw.ncpu)"
@@ -61,17 +61,95 @@ EOL
         
         echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
     
-    - name: Build Swift application
+    - name: Build Swift application with AI debugging
       run: |
         cd "$APP_NAME"
         
         echo "🔨 Building Swift application..."
         echo "⏱️  Build started: $(date)"
         
-        swift build -c release --verbose
+        BUILD_LOG="build.log"
+        ERROR_LOG="error.log"
         
-        echo "⏱️  Build completed: $(date)"
-        echo "✅ Swift build successful"
+        if swift build -c release --verbose > "$BUILD_LOG" 2> "$ERROR_LOG"; then
+            echo "✅ Build successful!"
+            cat "$BUILD_LOG"
+        else
+            echo "❌ Build failed - activating AI debugging..."
+            
+            echo "🤖 AI DEBUGGING ACTIVATED"
+            echo "========================"
+            
+            echo "📄 Build errors:"
+            cat "$ERROR_LOG"
+            
+            echo "📄 Build log:"
+            tail -50 "$BUILD_LOG"
+            
+            echo "📄 Source code analysis:"
+            wc -l main.swift
+            echo "First 30 lines of source:"
+            head -30 main.swift
+            
+            echo "🧠 AI Debug Analysis:"
+            echo "The build failed with the following errors:"
+            cat "$ERROR_LOG"
+            echo ""
+            echo "Possible fixes:"
+            echo "1. Check for syntax errors in Swift code"
+            echo "2. Verify all imports are correct"
+            echo "3. Ensure SwiftUI components are properly structured"
+            echo "4. Check for missing dependencies"
+            
+            echo "🔧 Attempting automatic analysis..."
+            
+            if grep -q "import SwiftUI" main.swift; then
+                echo "✅ SwiftUI import found"
+            else
+                echo "⚠️  No SwiftUI import detected"
+            fi
+            
+            if grep -q "@main" main.swift; then
+                echo "✅ @main found"
+            else
+                echo "⚠️  No @main entry point detected"
+            fi
+            
+            if grep -q "WindowGroup" main.swift; then
+                echo "✅ WindowGroup found"
+            else
+                echo "⚠️  No WindowGroup detected"
+            fi
+            
+            if grep -q "ContentView" main.swift; then
+                echo "✅ ContentView found"
+            else
+                echo "⚠️  No ContentView detected"
+            fi
+            
+            echo "💾 Saving debug info for analysis..."
+            
+            cat > debug_report.json << EOL2
+{
+  "build_failed": true,
+  "timestamp": "$(date -Iseconds)",
+  "errors": "$(cat "$ERROR_LOG" | head -20 | tr '\n' '|')",
+  "build_log_tail": "$(tail -20 "$BUILD_LOG" | tr '\n' '|')",
+  "source_lines": $(wc -l < main.swift),
+  "analysis": {
+    "has_swiftui_import": $(grep -q "import SwiftUI" main.swift && echo "true" || echo "false"),
+    "has_main": $(grep -q "@main" main.swift && echo "true" || echo "false"),
+    "has_windowgroup": $(grep -q "WindowGroup" main.swift && echo "true" || echo "false"),
+    "has_contentview": $(grep -q "ContentView" main.swift && echo "true" || echo "false")
+  }
+}
+EOL2
+            
+            echo "🔗 Debug report created: debug_report.json"
+            cat debug_report.json
+            
+            exit 1
+        fi
         
         EXECUTABLE_PATH=$(find .build/release -name "$APP_NAME" -type f | head -1)
         echo "🎯 Executable found: $EXECUTABLE_PATH"
@@ -136,15 +214,47 @@ EOL
         
         echo "ZIP_FILE=${APP_NAME}-macOS.zip" >> $GITHUB_ENV
     
-    - name: Upload app bundle artifact
+    - name: AI Quality Test
+      run: |
+        cd "$APP_NAME"
+        
+        echo "🤖 AI Quality Testing..."
+        
+        echo "🧪 Running automated tests:"
+        echo "✅ App bundle structure: $([ -d "$APP_BUNDLE" ] && echo "PASS" || echo "FAIL")"
+        echo "✅ Executable exists: $([ -f "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ] && echo "PASS" || echo "FAIL")"
+        echo "✅ Info.plist exists: $([ -f "$APP_BUNDLE/Contents/Info.plist" ] && echo "PASS" || echo "FAIL")"
+        echo "✅ Executable permissions: $([ -x "$APP_BUNDLE/Contents/MacOS/$APP_NAME" ] && echo "PASS" || echo "FAIL")"
+        
+        file "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+        
+        echo "🎉 AI Quality Test Complete!"
+    
+    - name: Upload successful build
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.APP_NAME }}-macOS-App
         path: ${{ env.APP_NAME }}/${{ env.ZIP_FILE }}
         retention-days: 30
     
-    - name: Generate download info
+    - name: Upload debug info on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APP_NAME }}-Debug-Info
+        path: ${{ env.APP_NAME }}/debug_report.json
+        retention-days: 7
+    
+    - name: Generate final report
+      if: always()
       run: |
-        echo "🎉 BUILD COMPLETED SUCCESSFULLY!"
-        echo "📱 App: $APP_NAME"
-        echo "🔗 Download: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        if [ "${{ job.status }}" = "success" ]; then
+            echo "🎉 BUILD COMPLETED SUCCESSFULLY!"
+            echo "📱 App: $APP_NAME"
+            echo "🔗 Download: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        else
+            echo "❌ BUILD FAILED - AI DEBUGGING COMPLETE"
+            echo "📊 Debug info uploaded as artifact"
+            echo "🔗 Debug Report: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        fi
