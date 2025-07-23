@@ -1,4 +1,4 @@
-name: AI App Builder with AI Debugging
+name: AI App Builder
 
 on:
   repository_dispatch:
@@ -23,14 +23,11 @@ jobs:
     
     - name: Setup build environment
       run: |
-        echo "🚀 Starting AI App Build with AI Debugging"
+        echo "🚀 Starting AI App Build"
         echo "💻 macOS Runner: $(sw_vers -productVersion)"
-        echo "🧠 Available RAM: $(sysctl -n hw.memsize | awk '{print $1/1024/1024/1024 " GB"}')"
-        echo "⚡ CPU Cores: $(sysctl -n hw.ncpu)"
-        xcode-select --version
         swift --version
     
-    - name: Decode and prepare Swift code
+    - name: Decode Swift code
       run: |
         APP_NAME="${{ github.event.inputs.app_name || github.event.client_payload.app_name }}"
         SWIFT_CODE_B64="${{ github.event.inputs.swift_code || github.event.client_payload.swift_code }}"
@@ -42,101 +39,46 @@ jobs:
         
         echo "$SWIFT_CODE_B64" | base64 --decode > main.swift
         
-        cat > Package.swift << 'PACKAGE_EOF'
-        // swift-tools-version: 5.9
-        import PackageDescription
+        cat > Package.swift << 'PKGEOF'
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "$APP_NAME",
+    platforms: [.macOS(.v14)],
+    products: [.executable(name: "$APP_NAME", targets: ["$APP_NAME"])],
+    targets: [.executableTarget(name: "$APP_NAME", path: ".")]
+)
+PKGEOF
         
-        let package = Package(
-            name: "$APP_NAME",
-            platforms: [.macOS(.v14)],
-            products: [.executable(name: "$APP_NAME", targets: ["$APP_NAME"])],
-            targets: [.executableTarget(name: "$APP_NAME", path: ".")]
-        )
-PACKAGE_EOF
+        sed -i '' "s/\$APP_NAME/$APP_NAME/g" Package.swift
         
-        echo "✅ Project structure created"
-        ls -la
-        echo "📄 Swift code preview:"
-        head -20 main.swift
-        
+        echo "✅ Project created"
         echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
     
-    - name: Build Swift application with AI debugging
+    - name: Build Swift application
       run: |
         cd "$APP_NAME"
         
         echo "🔨 Building Swift application..."
-        echo "⏱️  Build started: $(date)"
         
-        BUILD_LOG="build.log"
-        ERROR_LOG="error.log"
-        
-        if swift build -c release --verbose > "$BUILD_LOG" 2> "$ERROR_LOG"; then
+        if swift build -c release; then
             echo "✅ Build successful!"
         else
-            echo "❌ Build failed - activating AI debugging..."
-            
-            echo "🤖 AI DEBUGGING ACTIVATED"
-            echo "========================"
-            
-            echo "📄 Build errors:"
-            cat "$ERROR_LOG"
-            
-            echo "📄 Build log tail:"
-            tail -50 "$BUILD_LOG"
-            
-            echo "📄 Source code analysis:"
-            wc -l main.swift
-            echo "First 30 lines of source:"
+            echo "❌ Build failed"
+            echo "📄 Source code:"
             head -30 main.swift
-            
-            echo "🧠 AI Debug Analysis:"
-            if grep -q "import SwiftUI" main.swift; then
-                echo "✅ SwiftUI import found"
-            else
-                echo "⚠️  No SwiftUI import detected"
-            fi
-            
-            if grep -q "@main" main.swift; then
-                echo "✅ @main found"
-            else
-                echo "⚠️  No @main entry point detected"
-            fi
-            
-            echo "💾 Creating debug report..."
-            
-            cat > debug_report.json << 'DEBUG_EOF'
-{
-  "build_failed": true,
-  "timestamp": "$(date -Iseconds)",
-  "has_swiftui_import": $(grep -q "import SwiftUI" main.swift && echo "true" || echo "false"),
-  "has_main": $(grep -q "@main" main.swift && echo "true" || echo "false"),
-  "source_lines": $(wc -l < main.swift)
-}
-DEBUG_EOF
-            
-            echo "🔗 Debug report created"
-            cat debug_report.json
-            
             exit 1
         fi
         
         EXECUTABLE_PATH=$(find .build/release -name "$APP_NAME" -type f | head -1)
-        echo "🎯 Executable found: $EXECUTABLE_PATH"
-        
-        if [ ! -f "$EXECUTABLE_PATH" ]; then
-          echo "❌ Executable not found!"
-          find .build -name "$APP_NAME" -type f
-          exit 1
-        fi
+        echo "🎯 Executable: $EXECUTABLE_PATH"
         
         echo "EXECUTABLE_PATH=$EXECUTABLE_PATH" >> $GITHUB_ENV
     
-    - name: Create macOS app bundle
+    - name: Create app bundle
       run: |
         cd "$APP_NAME"
-        
-        echo "📦 Creating .app bundle..."
         
         APP_BUNDLE="${APP_NAME}.app"
         mkdir -p "$APP_BUNDLE/Contents/MacOS"
@@ -145,70 +87,40 @@ DEBUG_EOF
         cp "$EXECUTABLE_PATH" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
         chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
         
-        cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLIST_EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>CFBundleDevelopmentRegion</key>
-            <string>en</string>
-            <key>CFBundleExecutable</key>
-            <string>$APP_NAME</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.ai.${APP_NAME,,}</string>
-            <key>CFBundleInfoDictionaryVersion</key>
-            <string>6.0</string>
-            <key>CFBundleName</key>
-            <string>$APP_NAME</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0</string>
-            <key>CFBundleVersion</key>
-            <string>1</string>
-            <key>LSMinimumSystemVersion</key>
-            <string>14.0</string>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-        </dict>
-        </plist>
-PLIST_EOF
+        cat > "$APP_BUNDLE/Contents/Info.plist" << 'PLISTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>$APP_NAME</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.ai.$APP_NAME</string>
+    <key>CFBundleName</key>
+    <string>$APP_NAME</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+</dict>
+</plist>
+PLISTEOF
         
-        echo "✅ App bundle created: $APP_BUNDLE"
+        sed -i '' "s/\$APP_NAME/$APP_NAME/g" "$APP_BUNDLE/Contents/Info.plist"
         
         zip -r "${APP_NAME}-macOS.zip" "$APP_BUNDLE"
         
-        echo "📦 App bundle size:"
-        du -sh "$APP_BUNDLE"
-        du -sh "${APP_NAME}-macOS.zip"
-        
         echo "ZIP_FILE=${APP_NAME}-macOS.zip" >> $GITHUB_ENV
     
-    - name: Upload successful build
-      if: success()
+    - name: Upload app bundle
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.APP_NAME }}-macOS-App
         path: ${{ env.APP_NAME }}/${{ env.ZIP_FILE }}
         retention-days: 30
     
-    - name: Upload debug info on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.APP_NAME }}-Debug-Info
-        path: ${{ env.APP_NAME }}/debug_report.json
-        retention-days: 7
-    
-    - name: Generate final report
-      if: always()
+    - name: Report results
       run: |
-        if [ "${{ job.status }}" = "success" ]; then
-            echo "🎉 BUILD COMPLETED SUCCESSFULLY!"
-            echo "📱 App: $APP_NAME"
-            echo "🔗 Download: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        else
-            echo "❌ BUILD FAILED - AI DEBUGGING COMPLETE"
-            echo "📊 Debug info uploaded as artifact"
-            echo "🔗 Debug Report: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-        fi
+        echo "🎉 BUILD COMPLETED!"
+        echo "📱 App: $APP_NAME"
+        echo "🔗 Download: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
